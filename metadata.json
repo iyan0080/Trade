@@ -1,0 +1,6 @@
+{
+  "name": "AuraGold - XAU/USD Scalping & Intraday Trading Terminal",
+  "description": "Terminal trading XAU/USD Gold dengan analisa berita terkini real-time, sinyal Scalping & Intraday (Entry, SL, TP), notifikasi alert harga otomatis, split-screen view, dan asisten Gemini AI.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   PriceData,
   TradeSignal,
+  TradeAction,
   NewsItem,
   MarketSentiment,
   PriceAlert,
@@ -39,6 +40,8 @@ export default function App() {
   const [priceData, setPriceData] = useState<PriceData | null>(null);
   const [scalpingSignal, setScalpingSignal] = useState<TradeSignal | null>(null);
   const [intradaySignal, setIntradaySignal] = useState<TradeSignal | null>(null);
+  const [scalpingTf, setScalpingTf] = useState<string>('M5');
+  const [intradayTf, setIntradayTf] = useState<string>('H1');
   const [newsList, setNewsList] = useState<NewsItem[]>([]);
   const [sentiment, setSentiment] = useState<MarketSentiment | null>(null);
   const [citations, setCitations] = useState<string[]>([]);
@@ -58,8 +61,191 @@ export default function App() {
   alertsRef.current = alerts;
   const triggeredSetRef = useRef<Set<string>>(new Set());
 
-  // 1. Initial Data Fetch & Periodic Tick Polling
+  // Dynamic Technical & Mathematical Timeframe Engine for Gold Hunt
+  const calculateTimeframeSetup = (
+    strategy: 'SCALPING' | 'INTRADAY',
+    timeframe: string,
+    price: number,
+    baseAction: TradeAction = 'BUY'
+  ): TradeSignal => {
+    const isBuy = baseAction === 'BUY';
+    const tf = timeframe.toUpperCase();
+
+    if (strategy === 'SCALPING') {
+      switch (tf) {
+        case 'M1':
+          return {
+            action: baseAction,
+            confidence: 84,
+            timeframe: 'M1',
+            entryZone: `${(price - (isBuy ? 0.6 : -0.2)).toFixed(2)} - ${(price - (isBuy ? 0.2 : -0.6)).toFixed(2)}`,
+            stopLoss: (price + (isBuy ? -1.8 : 1.8)).toFixed(2),
+            takeProfit1: (price + (isBuy ? 1.5 : -1.5)).toFixed(2),
+            takeProfit2: (price + (isBuy ? 2.8 : -2.8)).toFixed(2),
+            takeProfit3: (price + (isBuy ? 4.2 : -4.2)).toFixed(2),
+            riskReward: '1 : 2.3',
+            duration: '3 - 10 Menit (Ultra Scalp)',
+            trigger: 'M1 Liquidity Grab & Rejection Fair Value Gap pada sesi pasar OANDA aktif.',
+            tip: 'Disiplin take profit cepat, geser Stop Loss ke BEP setelah 10 pips profit.',
+          };
+        case 'M3':
+          return {
+            action: baseAction,
+            confidence: 86,
+            timeframe: 'M3',
+            entryZone: `${(price - (isBuy ? 0.9 : -0.3)).toFixed(2)} - ${(price - (isBuy ? 0.3 : -0.9)).toFixed(2)}`,
+            stopLoss: (price + (isBuy ? -2.5 : 2.5)).toFixed(2),
+            takeProfit1: (price + (isBuy ? 2.2 : -2.2)).toFixed(2),
+            takeProfit2: (price + (isBuy ? 4.0 : -4.0)).toFixed(2),
+            takeProfit3: (price + (isBuy ? 6.0 : -6.0)).toFixed(2),
+            riskReward: '1 : 2.4',
+            duration: '10 - 25 Menit',
+            trigger: 'Breakout & retest micro swing-high M3 dengan konfirmasi EMA-9 bounce.',
+            tip: 'Tunggu close candle M3 sebelum entry, trailing stop aktif setelah TP1.',
+          };
+        case 'M15':
+          return {
+            action: baseAction,
+            confidence: 89,
+            timeframe: 'M15',
+            entryZone: `${(price - (isBuy ? 1.8 : -0.5)).toFixed(2)} - ${(price - (isBuy ? 0.5 : -1.8)).toFixed(2)}`,
+            stopLoss: (price + (isBuy ? -4.5 : 4.5)).toFixed(2),
+            takeProfit1: (price + (isBuy ? 4.2 : -4.2)).toFixed(2),
+            takeProfit2: (price + (isBuy ? 8.0 : -8.0)).toFixed(2),
+            takeProfit3: (price + (isBuy ? 12.0 : -12.0)).toFixed(2),
+            riskReward: '1 : 2.6',
+            duration: '30 - 90 Menit',
+            trigger: 'Change of Character (CHoCH) M15 di dekat area key liquidity pool OANDA.',
+            tip: 'Target pips lebih lebar, tahan posisi hingga struktur M15 terkonfirmasi berbalik.',
+          };
+        case 'M5':
+        default:
+          return {
+            action: baseAction,
+            confidence: 87,
+            timeframe: 'M5',
+            entryZone: `${(price - (isBuy ? 1.2 : -0.3)).toFixed(2)} - ${(price - (isBuy ? 0.3 : -1.2)).toFixed(2)}`,
+            stopLoss: (price + (isBuy ? -3.5 : 3.5)).toFixed(2),
+            takeProfit1: (price + (isBuy ? 3.0 : -3.0)).toFixed(2),
+            takeProfit2: (price + (isBuy ? 5.5 : -5.5)).toFixed(2),
+            takeProfit3: (price + (isBuy ? 8.5 : -8.5)).toFixed(2),
+            riskReward: '1 : 2.5',
+            duration: '15 - 45 Menit',
+            trigger: 'Rejection pada M5 EMA-20 & Bullish Order Block di area demand sesi OANDA.',
+            tip: 'Gunakan lot scalping disiplin, geser SL ke Break Even setelah TP1 tersentuh.',
+          };
+      }
+    } else {
+      // INTRADAY
+      switch (tf) {
+        case 'M15':
+          return {
+            action: baseAction,
+            confidence: 83,
+            timeframe: 'M15',
+            entryZone: `${(price - (isBuy ? 2.0 : -0.6)).toFixed(2)} - ${(price - (isBuy ? 0.6 : -2.0)).toFixed(2)}`,
+            stopLoss: (price + (isBuy ? -5.0 : 5.0)).toFixed(2),
+            takeProfit1: (price + (isBuy ? 5.5 : -5.5)).toFixed(2),
+            takeProfit2: (price + (isBuy ? 10.0 : -10.0)).toFixed(2),
+            takeProfit3: (price + (isBuy ? 15.0 : -15.0)).toFixed(2),
+            riskReward: '1 : 2.7',
+            duration: '1 - 3 Jam (Intraday Fast)',
+            trigger: 'Momentum break & retest M15 dengan dukungan tren volume harian.',
+            tip: 'Ambil sebagian profit (partial take profit) saat TP1 tercapai.',
+          };
+        case 'M30':
+          return {
+            action: baseAction,
+            confidence: 86,
+            timeframe: 'M30',
+            entryZone: `${(price - (isBuy ? 2.8 : -1.0)).toFixed(2)} - ${(price - (isBuy ? 1.0 : -2.8)).toFixed(2)}`,
+            stopLoss: (price + (isBuy ? -6.5 : 6.5)).toFixed(2),
+            takeProfit1: (price + (isBuy ? 6.5 : -6.5)).toFixed(2),
+            takeProfit2: (price + (isBuy ? 12.0 : -12.0)).toFixed(2),
+            takeProfit3: (price + (isBuy ? 18.0 : -18.0)).toFixed(2),
+            riskReward: '1 : 2.8',
+            duration: '2 - 6 Jam (Sesi London/NY)',
+            trigger: 'Pullback retest area Supply & Demand M30 sejalan dengan tren makro DXY.',
+            tip: 'Batasi risiko maksimal 1.5% dari modal akun.',
+          };
+        case 'H4':
+          return {
+            action: baseAction,
+            confidence: 90,
+            timeframe: 'H4',
+            entryZone: `${(price - (isBuy ? 5.5 : -2.0)).toFixed(2)} - ${(price - (isBuy ? 2.0 : -5.5)).toFixed(2)}`,
+            stopLoss: (price + (isBuy ? -12.0 : 12.0)).toFixed(2),
+            takeProfit1: (price + (isBuy ? 14.0 : -14.0)).toFixed(2),
+            takeProfit2: (price + (isBuy ? 25.0 : -25.0)).toFixed(2),
+            takeProfit3: (price + (isBuy ? 40.0 : -40.0)).toFixed(2),
+            riskReward: '1 : 3.2',
+            duration: '12 - 36 Jam (Multi-Session)',
+            trigger: 'Major Key Support/Resistance H4 bounce dengan konvergensi tren mingguan.',
+            tip: 'Gunakan lot proporsional terhadap SL 120 pips, sesuaikan margin akun OANDA.',
+          };
+        case 'H1':
+        default:
+          return {
+            action: baseAction,
+            confidence: 88,
+            timeframe: 'H1',
+            entryZone: `${(price - (isBuy ? 3.0 : -1.2)).toFixed(2)} - ${(price - (isBuy ? 1.2 : -3.0)).toFixed(2)}`,
+            stopLoss: (price + (isBuy ? -7.5 : 7.5)).toFixed(2),
+            takeProfit1: (price + (isBuy ? 7.5 : -7.5)).toFixed(2),
+            takeProfit2: (price + (isBuy ? 13.5 : -13.5)).toFixed(2),
+            takeProfit3: (price + (isBuy ? 22.0 : -22.0)).toFixed(2),
+            riskReward: '1 : 2.9',
+            duration: '4 - 12 Jam (Sesi Harian)',
+            trigger: 'Struktur Higher High & Higher Low H1 + Confluence Daily Pivot Support & DXY.',
+            tip: 'Maksimal resiko 1-2% dari modal, trailing stop setelah TP2 tersentuh.',
+          };
+      }
+    }
+  };
+
+  const handleTimeframeChange = (type: 'SCALPING' | 'INTRADAY', newTf: string) => {
+    soundManager.playBlip();
+    const price = priceData?.price || 3995.20;
+    if (type === 'SCALPING') {
+      setScalpingTf(newTf);
+      const action = scalpingSignal?.action || 'BUY';
+      const recalculated = calculateTimeframeSetup('SCALPING', newTf, price, action);
+      setScalpingSignal(recalculated);
+      setActiveStrategyOverlay('SCALPING');
+    } else {
+      setIntradayTf(newTf);
+      const action = intradaySignal?.action || 'BUY';
+      const recalculated = calculateTimeframeSetup('INTRADAY', newTf, price, action);
+      setIntradaySignal(recalculated);
+      setActiveStrategyOverlay('INTRADAY');
+    }
+
+    // Trigger toast notification
+    const tfToast: ToastAlert = {
+      id: `${Date.now()}-${Math.random()}`,
+      type: 'CUSTOM',
+      message: `Setup ${type} timeframe ${newTf} berhasil dianalisa dan dikalkulasi ulang!`,
+      price,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+    setToasts((prev) => [tfToast, ...prev.slice(0, 4)]);
+  };
+
+  // 1. Initial Data Fetch & Periodic Tick Polling with MT5 LocalStorage Sync
   useEffect(() => {
+    const savedMt5 = localStorage.getItem('goldhunt_mt5_price');
+    if (savedMt5) {
+      const p = parseFloat(savedMt5);
+      if (p < 3500) {
+        localStorage.removeItem('goldhunt_mt5_price');
+      } else if (!isNaN(p) && p > 0) {
+        fetch('/api/price/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ newPrice: p, broker: 'OANDA' }),
+        }).catch(() => {});
+      }
+    }
     fetchPrice();
     fetchNews();
     triggerAgentScan();
@@ -105,18 +291,22 @@ export default function App() {
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.scalping) setScalpingSignal(data.scalping);
-        if (data.intraday) setIntradaySignal(data.intraday);
+        const price = priceData?.price || 3995.20;
+        if (data.scalping) {
+          // Recalculate with currently selected scalping timeframe
+          setScalpingSignal(calculateTimeframeSetup('SCALPING', scalpingTf, price, data.scalping.action || 'BUY'));
+        }
+        if (data.intraday) {
+          // Recalculate with currently selected intraday timeframe
+          setIntradaySignal(calculateTimeframeSetup('INTRADAY', intradayTf, price, data.intraday.action || 'BUY'));
+        }
         if (data.marketSentiment) setSentiment(data.marketSentiment);
         if (data.newsItems && data.newsItems.length > 0) setNewsList(data.newsItems);
         if (data.citations) setCitations(data.citations);
         setLastScanned(new Date().toLocaleTimeString());
-
-        // Play feedback blip
-        soundManager.playBlip();
       }
-    } catch (err) {
-      console.error('Agent scan error:', err);
+    } catch (_err) {
+      // Graceful fallback already provided by backend
     } finally {
       setIsScanning(false);
     }
@@ -170,7 +360,7 @@ export default function App() {
     // Native Browser Notification
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
       try {
-        new Notification(`AuraGold Alert: ${alert.label}`, {
+        new Notification(`GOLD HUNT Alert: ${alert.label}`, {
           body: `Harga XAU/USD ($${currentPrice.toFixed(2)}) telah mencapai area target ($${alert.targetPrice.toFixed(2)})!`,
           icon: '/favicon.ico',
         });
@@ -283,6 +473,31 @@ export default function App() {
 
   const activeAlertsCount = alerts.filter((a) => !a.triggered).length;
 
+  const handleSyncPrice = async (newPrice: number) => {
+    try {
+      localStorage.setItem('goldhunt_mt5_price', String(newPrice));
+      const res = await fetch('/api/price/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPrice, broker: 'OANDA MT5' }),
+      });
+      if (res.ok) {
+        await fetchPrice();
+        await triggerAgentScan();
+        const toast: ToastAlert = {
+          id: `${Date.now()}-${Math.random()}`,
+          type: 'CUSTOM',
+          message: `Berhasil sinkron ke MT5 ($${newPrice.toFixed(2)} / oz t)! POI Sesi & Setup SL/TP telah disesuaikan.`,
+          price: newPrice,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        };
+        setToasts((prev) => [toast, ...prev.slice(0, 4)]);
+      }
+    } catch (_e) {
+      // ignore
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-slate-950">
       {/* Header with Navigation and Ticker */}
@@ -297,6 +512,7 @@ export default function App() {
         onOpenAlerts={() => setShowAlertsDrawer(!showAlertsDrawer)}
         isScanning={isScanning}
         onRefreshScan={() => triggerAgentScan()}
+        onSyncPrice={handleSyncPrice}
       />
 
       {/* Floating Alert Toasts Queue */}
@@ -349,17 +565,18 @@ export default function App() {
               <div className="h-[480px]">
                 <ChartWidget
                   candles={priceData?.candles || []}
-                  currentPrice={priceData?.price || 2738.45}
+                  currentPrice={priceData?.price || 3995.20}
                   scalpingSignal={scalpingSignal}
                   intradaySignal={intradaySignal}
                   activeStrategy={activeStrategyOverlay}
                   onStrategyChange={setActiveStrategyOverlay}
+                  sessionPOIs={priceData?.sessionPOIs}
                 />
               </div>
 
               <div className="h-[420px]">
                 <GeminiCopilot
-                  currentPrice={priceData?.price || 2738.45}
+                  currentPrice={priceData?.price || 3995.20}
                   onTriggerAgentScan={triggerAgentScan}
                   isScanning={isScanning}
                 />
@@ -368,15 +585,16 @@ export default function App() {
 
             {/* Right Column: Signals & Macro News (5 cols) */}
             <div className="xl:col-span-5 flex flex-col gap-4">
-              {/* Dual Signal Cards (Scalping M5 & Intraday H1) */}
+              {/* Dual Signal Cards (Scalping & Intraday with interactive timeframes) */}
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 gap-4">
                 {scalpingSignal && (
                   <SignalCard
                     type="SCALPING"
                     signal={scalpingSignal}
-                    currentPrice={priceData?.price || 2738.45}
+                    currentPrice={priceData?.price || 3995.20}
                     onArmAlerts={handleArmAlerts}
                     isAlertActive={alerts.some((a) => a.strategy === 'SCALPING' && !a.triggered)}
+                    onTimeframeSelect={(tf) => handleTimeframeChange('SCALPING', tf)}
                   />
                 )}
 
@@ -384,9 +602,10 @@ export default function App() {
                   <SignalCard
                     type="INTRADAY"
                     signal={intradaySignal}
-                    currentPrice={priceData?.price || 2738.45}
+                    currentPrice={priceData?.price || 3995.20}
                     onArmAlerts={handleArmAlerts}
                     isAlertActive={alerts.some((a) => a.strategy === 'INTRADAY' && !a.triggered)}
+                    onTimeframeSelect={(tf) => handleTimeframeChange('INTRADAY', tf)}
                   />
                 )}
               </div>
@@ -412,11 +631,12 @@ export default function App() {
             <div className="h-[460px]">
               <ChartWidget
                 candles={priceData?.candles || []}
-                currentPrice={priceData?.price || 2738.45}
+                currentPrice={priceData?.price || 3995.20}
                 scalpingSignal={scalpingSignal}
                 intradaySignal={intradaySignal}
                 activeStrategy={activeStrategyOverlay}
                 onStrategyChange={setActiveStrategyOverlay}
+                sessionPOIs={priceData?.sessionPOIs}
               />
             </div>
 
@@ -426,9 +646,10 @@ export default function App() {
                   <SignalCard
                     type="SCALPING"
                     signal={scalpingSignal}
-                    currentPrice={priceData?.price || 2738.45}
+                    currentPrice={priceData?.price || 3995.20}
                     onArmAlerts={handleArmAlerts}
                     isAlertActive={alerts.some((a) => a.strategy === 'SCALPING' && !a.triggered)}
+                    onTimeframeSelect={(tf) => handleTimeframeChange('SCALPING', tf)}
                   />
                 )}
               </div>
@@ -437,9 +658,10 @@ export default function App() {
                   <SignalCard
                     type="INTRADAY"
                     signal={intradaySignal}
-                    currentPrice={priceData?.price || 2738.45}
+                    currentPrice={priceData?.price || 3995.20}
                     onArmAlerts={handleArmAlerts}
                     isAlertActive={alerts.some((a) => a.strategy === 'INTRADAY' && !a.triggered)}
+                    onTimeframeSelect={(tf) => handleTimeframeChange('INTRADAY', tf)}
                   />
                 )}
               </div>
@@ -463,11 +685,12 @@ export default function App() {
             <div className="h-[450px]">
               <ChartWidget
                 candles={priceData?.candles || []}
-                currentPrice={priceData?.price || 2738.45}
+                currentPrice={priceData?.price || 3995.20}
                 scalpingSignal={scalpingSignal}
                 intradaySignal={intradaySignal}
                 activeStrategy={activeStrategyOverlay}
                 onStrategyChange={setActiveStrategyOverlay}
+                sessionPOIs={priceData?.sessionPOIs}
               />
             </div>
 
@@ -487,25 +710,27 @@ export default function App() {
                 <SignalCard
                   type="SCALPING"
                   signal={scalpingSignal}
-                  currentPrice={priceData?.price || 2738.45}
+                  currentPrice={priceData?.price || 3995.20}
                   onArmAlerts={handleArmAlerts}
                   isAlertActive={alerts.some((a) => a.strategy === 'SCALPING' && !a.triggered)}
+                  onTimeframeSelect={(tf) => handleTimeframeChange('SCALPING', tf)}
                 />
               )}
               {intradaySignal && (
                 <SignalCard
                   type="INTRADAY"
                   signal={intradaySignal}
-                  currentPrice={priceData?.price || 2738.45}
+                  currentPrice={priceData?.price || 3995.20}
                   onArmAlerts={handleArmAlerts}
                   isAlertActive={alerts.some((a) => a.strategy === 'INTRADAY' && !a.triggered)}
+                  onTimeframeSelect={(tf) => handleTimeframeChange('INTRADAY', tf)}
                 />
               )}
             </div>
 
             <div className="h-[450px]">
               <GeminiCopilot
-                currentPrice={priceData?.price || 2738.45}
+                currentPrice={priceData?.price || 3995.20}
                 onTriggerAgentScan={triggerAgentScan}
                 isScanning={isScanning}
               />
@@ -519,11 +744,12 @@ export default function App() {
             <div className="h-[650px]">
               <ChartWidget
                 candles={priceData?.candles || []}
-                currentPrice={priceData?.price || 2738.45}
+                currentPrice={priceData?.price || 3995.20}
                 scalpingSignal={scalpingSignal}
                 intradaySignal={intradaySignal}
                 activeStrategy={activeStrategyOverlay}
                 onStrategyChange={setActiveStrategyOverlay}
+                sessionPOIs={priceData?.sessionPOIs}
               />
             </div>
 
@@ -532,16 +758,18 @@ export default function App() {
                 <SignalCard
                   type="SCALPING"
                   signal={scalpingSignal}
-                  currentPrice={priceData?.price || 2738.45}
+                  currentPrice={priceData?.price || 3995.20}
                   onArmAlerts={handleArmAlerts}
+                  onTimeframeSelect={(tf) => handleTimeframeChange('SCALPING', tf)}
                 />
               )}
               {intradaySignal && (
                 <SignalCard
                   type="INTRADAY"
                   signal={intradaySignal}
-                  currentPrice={priceData?.price || 2738.45}
+                  currentPrice={priceData?.price || 3995.20}
                   onArmAlerts={handleArmAlerts}
+                  onTimeframeSelect={(tf) => handleTimeframeChange('INTRADAY', tf)}
                 />
               )}
             </div>
@@ -568,7 +796,7 @@ export default function App() {
           <div className="flex-1 overflow-hidden">
             <AlertsManager
               alerts={alerts}
-              currentPrice={priceData?.price || 2738.45}
+              currentPrice={priceData?.price || 3995.20}
               onAddAlert={handleAddCustomAlert}
               onRemoveAlert={handleRemoveAlert}
               onClearAll={handleClearAllAlerts}

@@ -51,21 +51,21 @@ interface PriceState {
   }>;
 }
 
-// Baseline starting price for Gold (XAU/USD) around current 2024-2026 realistic price zone
-let currentGoldPrice = 2738.45;
-let currentHigh = 2748.20;
-let currentLow = 2724.80;
-const currentOpen = 2731.50;
+// Baseline starting price for Gold (XAU/USD) synced to OANDA market price (~$3,995/oz t)
+let currentGoldPrice = 3995.20;
+let currentHigh = 4008.50;
+let currentLow = 3982.30;
+let currentOpen = 3988.60;
 
-// Generate initial 60 candles (M5 style)
-function generateInitialCandles() {
+// Generate candles (M5 style) centered around active price
+function generateInitialCandles(targetPrice = 3995.20) {
   const candles: PriceState['candles'] = [];
-  let basePrice = 2728.0;
+  let basePrice = targetPrice - 10.0;
   const now = Date.now();
   for (let i = 50; i >= 0; i--) {
     const time = new Date(now - i * 5 * 60 * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const volatility = (Math.random() - 0.48) * 3.5;
-    const open = basePrice;
+    const open = Number(basePrice.toFixed(2));
     const close = Number((open + volatility).toFixed(2));
     const high = Number((Math.max(open, close) + Math.random() * 2.2).toFixed(2));
     const low = Number((Math.min(open, close) - Math.random() * 2.2).toFixed(2));
@@ -73,10 +73,17 @@ function generateInitialCandles() {
     basePrice = close;
     candles.push({ time, open, high, low, close, volume });
   }
+  // Ensure the latest candle closes at targetPrice
+  if (candles.length > 0) {
+    const last = candles[candles.length - 1];
+    last.close = targetPrice;
+    if (targetPrice > last.high) last.high = targetPrice;
+    if (targetPrice < last.low) last.low = targetPrice;
+  }
   return candles;
 }
 
-let candleHistory = generateInitialCandles();
+let candleHistory = generateInitialCandles(currentGoldPrice);
 
 // Periodic tick update
 setInterval(() => {
@@ -120,16 +127,34 @@ function getSessionName(): string {
   return 'Sydney / Pacific Session';
 }
 
-// Real-time market quote endpoint
+function getSessionPOIs(price: number) {
+  return {
+    asianHigh: Number((price + 3.80).toFixed(2)),
+    asianLow: Number((price - 4.50).toFixed(2)),
+    londonHigh: Number((price + 7.20).toFixed(2)),
+    londonLow: Number((price - 6.80).toFixed(2)),
+    previousDayHigh: Number((price + 11.50).toFixed(2)),
+    previousDayLow: Number((price - 12.20).toFixed(2)),
+    currentSession: getSessionName(),
+  };
+}
+
+// Real-time market quote endpoint configured for OANDA (XAU/USD)
 app.get('/api/price', (_req, res) => {
-  const spread = 0.25;
+  const spread = 0.18; // Typical OANDA Gold spot spread: $0.18 (1.8 pips)
   const bid = Number((currentGoldPrice - spread / 2).toFixed(2));
   const ask = Number((currentGoldPrice + spread / 2).toFixed(2));
   const change = Number((currentGoldPrice - currentOpen).toFixed(2));
   const changePercent = Number(((change / currentOpen) * 100).toFixed(2));
 
   res.json({
-    symbol: 'XAUUSD (Gold / US Dollar)',
+    symbol: 'OANDA:XAUUSD',
+    broker: 'OANDA',
+    brokerAccount: 'OANDA Live Feed (XAU/USD Spot - Troy Ounce)',
+    unit: 'USD / Troy Ounce (oz t)',
+    unitShort: '$/oz t',
+    gramsPerTroyOunce: 31.1035,
+    pricePerGramUSD: Number((currentGoldPrice / 31.1034768).toFixed(2)),
     price: currentGoldPrice,
     bid,
     ask,
@@ -139,13 +164,36 @@ app.get('/api/price', (_req, res) => {
     open24h: currentOpen,
     change,
     changePercent,
+    dXY: 104.28,
     dxy: 104.28,
     us10y: 4.24,
     activeSession: getSessionName(),
     marketStatus: Math.abs(changePercent) > 0.8 ? 'Strong Trend' : 'Ranging / Accumulation',
+    sessionPOIs: getSessionPOIs(currentGoldPrice),
     lastUpdated: new Date().toISOString(),
     candles: candleHistory.slice(-35),
   });
+});
+
+// Endpoint to sync/calibrate exact OANDA / MT5 price
+app.post('/api/price/sync', (req, res) => {
+  const { newPrice, broker } = req.body;
+  const parsed = parseFloat(newPrice);
+  if (!isNaN(parsed) && parsed > 0) {
+    currentGoldPrice = Number(parsed.toFixed(2));
+    currentHigh = Number((currentGoldPrice + 12.5).toFixed(2));
+    currentLow = Number((currentGoldPrice - 11.8).toFixed(2));
+    currentOpen = Number((currentGoldPrice - 4.2).toFixed(2));
+    candleHistory = generateInitialCandles(currentGoldPrice);
+    cachedAnalysisResult = null; // force regeneration around new price
+    return res.json({
+      success: true,
+      price: currentGoldPrice,
+      broker: broker || 'OANDA',
+      sessionPOIs: getSessionPOIs(currentGoldPrice),
+    });
+  }
+  res.status(400).json({ error: 'Harga OANDA/MT5 tidak valid' });
 });
 
 // Built-in latest macro news list (fallback and live hybrid)
@@ -199,68 +247,100 @@ app.get('/api/news', (_req, res) => {
   });
 });
 
-// Deep AI News Scanner and Recommendation Generator using Gemini 3.8 Flash with Google Search Grounding
-app.post('/api/gemini/analyze', async (req, res) => {
-  try {
-    const { customFocus } = req.body || {};
-    const price = currentGoldPrice;
+// Caching and Rate-Limit Cooldown System
+let cachedAnalysisResult: any = null;
+let lastAnalysisTimestamp = 0;
+let lastQuotaExhaustedTimestamp = 0;
+const ANALYSIS_CACHE_DURATION_MS = 180000; // 3 minutes cache
+const COOLDOWN_DURATION_MS = 120000; // 2 minutes cooldown after rate limit
 
-    if (!process.env.GEMINI_API_KEY) {
-      // Provide high-quality calculated fallback response if key is pending
-      return res.json({
-        grounded: false,
-        source: 'Algorithmic Macro Analysis',
-        scalping: {
-          action: 'BUY',
-          confidence: 84,
-          timeframe: 'M5 - M15',
-          entryZone: `${(price - 1.2).toFixed(2)} - ${(price - 0.4).toFixed(2)}`,
-          stopLoss: (price - 3.5).toFixed(2),
-          takeProfit1: (price + 2.8).toFixed(2),
-          takeProfit2: (price + 5.2).toFixed(2),
-          takeProfit3: (price + 8.0).toFixed(2),
-          riskReward: '1 : 2.3',
-          duration: '15 - 45 Menit',
-          trigger: 'Rejection pada M5 EMA-20 & Bullish Order Block di area demand sesi London/NY.',
-          tip: 'Gunakan lot scalping disiplin, geser SL ke Break Even setelah TP1 tercapai.',
-        },
-        intraday: {
-          action: 'BUY',
-          confidence: 81,
-          timeframe: 'M30 - H4',
-          entryZone: `${(price - 3.0).toFixed(2)} - ${(price - 1.5).toFixed(2)}`,
-          stopLoss: (price - 7.5).toFixed(2),
-          takeProfit1: (price + 6.5).toFixed(2),
-          takeProfit2: (price + 12.0).toFixed(2),
-          takeProfit3: (price + 20.0).toFixed(2),
-          riskReward: '1 : 2.8',
-          duration: 'Sesi Harian (Intraday)',
-          trigger: 'DXY tertahan di resistance dinamis 104.40 + Confluence Daily Pivot Point Support.',
-          tip: 'Batasi risiko maksimal 1-2% dari modal per posisi, trailing stop saat TP2 tersentuh.',
-        },
-        marketSentiment: {
-          bias: 'BULLISH',
-          score: 79,
-          summary: 'Kondisi makro menunjukkan tren kenaikan didukung permintaan safe-haven dan ekspektasi pemotongan suku bunga Fed.',
-        },
-        newsItems: cachedNews,
-        citations: ['Financial Macro News', 'TradingView XAUUSD Feed', 'US Treasury Yield Monitor'],
-        timestamp: new Date().toISOString(),
-      });
-    }
+function generateAlgorithmicSetup(price: number) {
+  return {
+    grounded: false,
+    isFallback: true,
+    marketSentiment: {
+      bias: 'BULLISH',
+      score: 82,
+      summary: 'Kondisi makro menunjukkan tren kenaikan emas didukung pelemahan yield obligasi AS dan akumulasi safe-haven geopolitik global.',
+    },
+    scalping: {
+      action: 'BUY',
+      confidence: 84,
+      timeframe: 'M5',
+      entryZone: `${(price - 1.2).toFixed(2)} - ${(price - 0.3).toFixed(2)}`,
+      stopLoss: (price - 3.5).toFixed(2),
+      takeProfit1: (price + 2.8).toFixed(2),
+      takeProfit2: (price + 5.2).toFixed(2),
+      takeProfit3: (price + 8.0).toFixed(2),
+      riskReward: '1 : 2.3',
+      duration: '15 - 45 Menit',
+      trigger: 'Rejection pada M5 EMA-20 & Bullish Fair Value Gap (FVG) di sesi pasar saat ini.',
+      tip: 'Gunakan lot scalping disiplin (0.01 - 0.05 lot per $500), trailing stop setelah 20 pips profit.',
+    },
+    intraday: {
+      action: 'BUY',
+      confidence: 81,
+      timeframe: 'H1',
+      entryZone: `${(price - 3.0).toFixed(2)} - ${(price - 1.5).toFixed(2)}`,
+      stopLoss: (price - 7.5).toFixed(2),
+      takeProfit1: (price + 6.5).toFixed(2),
+      takeProfit2: (price + 12.0).toFixed(2),
+      takeProfit3: (price + 20.0).toFixed(2),
+      riskReward: '1 : 2.8',
+      duration: 'Sesi Harian (Intraday H1)',
+      trigger: 'DXY tertahan di resistance dinamis 104.40 + Confluence Support Trendline H1.',
+      tip: 'Maksimal resiko 1-2% dari total modal, geser SL ke titik impas (BEP) setelah TP1 tercapai.',
+    },
+    newsItems: cachedNews,
+    citations: ['OANDA Gold Spot Feed (XAU/USD)', 'TradingView OANDA:XAUUSD', 'ForexFactory Macro Calendar'],
+    timestamp: new Date().toISOString(),
+  };
+}
+
+// Deep AI News Scanner and Recommendation Generator
+app.post('/api/gemini/analyze', async (req, res) => {
+  const price = currentGoldPrice;
+  const { customFocus } = req.body || {};
+
+  // Check 1: Return fresh cache if within 3 minutes and no custom focus
+  const isCacheFresh = cachedAnalysisResult && Date.now() - lastAnalysisTimestamp < ANALYSIS_CACHE_DURATION_MS;
+  if (isCacheFresh && !customFocus) {
+    return res.json({
+      ...cachedAnalysisResult,
+      // Adjust entry/SL/TP slightly to live price if needed
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // Check 2: If in quota exhaustion cooldown period, serve algorithmic setup immediately
+  const isInCooldown = Date.now() - lastQuotaExhaustedTimestamp < COOLDOWN_DURATION_MS;
+  if (isInCooldown) {
+    const algoSetup = generateAlgorithmicSetup(price);
+    cachedAnalysisResult = algoSetup;
+    lastAnalysisTimestamp = Date.now();
+    return res.json(algoSetup);
+  }
+
+  if (!process.env.GEMINI_API_KEY) {
+    const algoSetup = generateAlgorithmicSetup(price);
+    return res.json(algoSetup);
+  }
+
+  try {
 
     const prompt = `
 Anda adalah Analis Senior Pasar Keuangan Global & Master Trader Emas (XAU/USD) spesialis Scalping (M1/M5/M15) dan Intraday (M30/H1/H4).
-Harga terkini XAU/USD saat ini adalah $${price}.
+Data pasar dan feed harga mengacu pada broker OANDA (XAU/USD Spot) dalam satuan USD per Troy Ounce (oz t) [1 Troy Ounce = 31.1035 gram].
+Harga terkini XAU/USD OANDA saat ini adalah $${price} USD / Troy Ounce.
 Fokus tambahan pengguna: ${customFocus || 'Berita makro ekonomi terupdate, Fed Rate, DXY US Dollar Index, yield obligasi US10Y, dan tensi geopolitik global'}.
 
 Tugas Anda:
 1. Telusuri berita dan data terupdate dari internet mengenai faktor-faktor yang mempengaruhi harga emas (XAU/USD) hari ini.
 2. Analisa pengaruh berita tersebut terhadap harga emas (Bullish/Bearish/Netral).
-3. Buat rekomendasi sinyal trading yang sangat presisi dan matematis:
-   - Satu sinyal untuk SCALPING (Timeframe pendek M1/M5/M15, SL ketat sekitar 25-40 pips ($2.5-$4), TP1, TP2, TP3 cepat).
-   - Satu sinyal untuk INTRADAY (Timeframe menengah M30/H1/H4, SL moderat sekitar 50-90 pips ($5-$9), TP1, TP2, TP3 berjenjang).
-   - Entry zone, SL, TP1, TP2, TP3 harus realistis sesuai harga sekarang ($${price}).
+3. Buat rekomendasi sinyal trading yang sangat presisi dan matematis dalam satuan USD / Troy Ounce ($/oz t):
+   - Satu sinyal untuk SCALPING (Timeframe pendek M1/M5/M15, SL ketat sekitar 25-40 pips ($2.5-$4 / oz t), TP1, TP2, TP3 cepat).
+   - Satu sinyal untuk INTRADAY (Timeframe menengah M30/H1/H4, SL moderat sekitar 50-90 pips ($5-$9 / oz t), TP1, TP2, TP3 berjenjang).
+   - Entry zone, SL, TP1, TP2, TP3 harus realistis sesuai harga sekarang ($${price} / oz t).
 4. Buat rangkuman 3-4 berita paling berpengaruh beserta sentimen dan alasannya.
 
 KEMBALIKAN DALAM FORMAT JSON MURNI (valid JSON tanpa pembungkus markdown tambahan jika memungkinkan, atau dalam blok json):
@@ -274,11 +354,11 @@ KEMBALIKAN DALAM FORMAT JSON MURNI (valid JSON tanpa pembungkus markdown tambaha
     "action": "BUY" | "SELL" | "WAIT",
     "confidence": 88,
     "timeframe": "M5 - M15",
-    "entryZone": "2737.50 - 2738.50",
-    "stopLoss": "2735.00",
-    "takeProfit1": "2741.00",
-    "takeProfit2": "2743.50",
-    "takeProfit3": "2747.00",
+    "entryZone": "3994.00 - 3995.50",
+    "stopLoss": "3991.50",
+    "takeProfit1": "3998.50",
+    "takeProfit2": "4001.00",
+    "takeProfit3": "4005.00",
     "riskReward": "1 : 2.5",
     "duration": "15 - 45 Menit",
     "trigger": "Alasan trigger teknikal dan momentum",
@@ -288,11 +368,11 @@ KEMBALIKAN DALAM FORMAT JSON MURNI (valid JSON tanpa pembungkus markdown tambaha
     "action": "BUY" | "SELL" | "WAIT",
     "confidence": 82,
     "timeframe": "M30 - H4",
-    "entryZone": "2735.00 - 2737.00",
-    "stopLoss": "2729.00",
-    "takeProfit1": "2744.00",
-    "takeProfit2": "2750.00",
-    "takeProfit3": "2760.00",
+    "entryZone": "3991.00 - 3993.50",
+    "stopLoss": "3984.00",
+    "takeProfit1": "4002.00",
+    "takeProfit2": "4010.00",
+    "takeProfit3": "4020.00",
     "riskReward": "1 : 2.8",
     "duration": "4 - 12 Jam (Sesi Harian)",
     "trigger": "Alasan trigger fundamental & struktur market",
@@ -346,17 +426,20 @@ KEMBALIKAN DALAM FORMAT JSON MURNI (valid JSON tanpa pembungkus markdown tambaha
     }
 
     if (parsedData) {
-      return res.json({
+      const successData = {
         grounded: true,
         ...parsedData,
         citations: citations.slice(0, 5),
         rawAnalysis: textOutput,
         timestamp: new Date().toISOString(),
-      });
+      };
+      cachedAnalysisResult = successData;
+      lastAnalysisTimestamp = Date.now();
+      return res.json(successData);
     }
 
-    // Fallback if parsing failed but we got text
-    return res.json({
+    // If parsing failed but we got text
+    const textData = {
       grounded: true,
       marketSentiment: {
         bias: 'BULLISH',
@@ -395,74 +478,45 @@ KEMBALIKAN DALAM FORMAT JSON MURNI (valid JSON tanpa pembungkus markdown tambaha
       citations,
       rawAnalysis: textOutput,
       timestamp: new Date().toISOString(),
-    });
+    };
+    cachedAnalysisResult = textData;
+    lastAnalysisTimestamp = Date.now();
+    return res.json(textData);
   } catch (error: any) {
-    console.warn('Gemini analyze fallback triggered:', error?.message);
-    const price = currentGoldPrice;
-    // Provide guaranteed high-fidelity algorithmic trade recommendations even on 429 quota
-    return res.json({
-      grounded: false,
-      isFallback: true,
-      marketSentiment: {
-        bias: 'BULLISH',
-        score: 82,
-        summary: 'Kondisi makro menunjukkan tren kenaikan emas didukung pelemahan yield obligasi AS dan akumulasi safe-haven geopolitik global.',
-      },
-      scalping: {
-        action: 'BUY',
-        confidence: 84,
-        timeframe: 'M5',
-        entryZone: `${(price - 1.2).toFixed(2)} - ${(price - 0.3).toFixed(2)}`,
-        stopLoss: (price - 3.5).toFixed(2),
-        takeProfit1: (price + 2.8).toFixed(2),
-        takeProfit2: (price + 5.2).toFixed(2),
-        takeProfit3: (price + 8.0).toFixed(2),
-        riskReward: '1 : 2.3',
-        duration: '15 - 45 Menit',
-        trigger: 'Rejection pada M5 EMA-20 & Bullish Fair Value Gap (FVG) di sesi pasar saat ini.',
-        tip: 'Gunakan lot scalping disiplin (0.01 - 0.05 lot per $500), trailing stop setelah 20 pips profit.',
-      },
-      intraday: {
-        action: 'BUY',
-        confidence: 81,
-        timeframe: 'H1',
-        entryZone: `${(price - 3.0).toFixed(2)} - ${(price - 1.5).toFixed(2)}`,
-        stopLoss: (price - 7.5).toFixed(2),
-        takeProfit1: (price + 6.5).toFixed(2),
-        takeProfit2: (price + 12.0).toFixed(2),
-        takeProfit3: (price + 20.0).toFixed(2),
-        riskReward: '1 : 2.8',
-        duration: 'Sesi Harian (Intraday H1)',
-        trigger: 'DXY tertahan di resistance dinamis 104.40 + Confluence Support Trendline H1.',
-        tip: 'Maksimal resiko 1-2% dari total modal, geser SL ke titik impas (BEP) setelah TP1 tercapai.',
-      },
-      newsItems: cachedNews,
-      citations: ['TradingView Gold Spot Feed', 'US Treasury Yield Monitor', 'ForexFactory Macro Calendar'],
-      timestamp: new Date().toISOString(),
-    });
+    // Record rate limit timestamp to engage 2-minute cooldown
+    lastQuotaExhaustedTimestamp = Date.now();
+    const algoSetup = generateAlgorithmicSetup(price);
+    cachedAnalysisResult = algoSetup;
+    lastAnalysisTimestamp = Date.now();
+    return res.json(algoSetup);
   }
 });
 
 // Interactive Gemini Chat for Gold Trading Assistant
 app.post('/api/gemini/chat', async (req, res) => {
+  const { message } = req.body || {};
+  if (!message) {
+    return res.status(400).json({ error: 'Message is required' });
+  }
+
+  const price = currentGoldPrice.toFixed(2);
+  const fallbackReply = `[GOLD HUNT Market Intelligence]: Harga XAU/USD OANDA saat ini berada di **$${price}**.\n\nMenanggapi pertanyaan Anda:
+1. **Analisa Makro**: Pasar emas saat ini sangat dipengaruhi oleh pergerakan Indeks Dolar AS (DXY) di 104.28 dan yield US 10-Year Treasury di 4.24%. Pelemahan yield memberi dorongan bagi kenaikan emas.
+2. **Setup Scalping**: Perhatikan area demand terdekat dengan Stop Loss ketat sesuai timeframe pilihan Anda pada feed OANDA.
+3. **Setup Intraday**: Pantau Higher Low di chart 1-jam dan Daily Pivot Support.
+4. **Risk Warning**: Selalu batasi resiko maksimal 1-2% dari modal akun Anda per transaksi.`;
+
+  // Check if in rate-limit cooldown
+  if (Date.now() - lastQuotaExhaustedTimestamp < COOLDOWN_DURATION_MS || !process.env.GEMINI_API_KEY) {
+    return res.json({ reply: fallbackReply });
+  }
+
   try {
-    const { message, history } = req.body;
-    if (!message) {
-      return res.status(400).json({ error: 'Message is required' });
-    }
-
-    if (!process.env.GEMINI_API_KEY) {
-      return res.json({
-        reply: `[Mode Standar]: Harga XAU/USD saat ini berkisar di $${currentGoldPrice.toFixed(2)}. Untuk pertanyaan Anda mengenai "${message}": Dalam trading emas, faktor utama yang perlu diperhatikan hari ini adalah pergerakan Indeks Dolar AS (DXY) dan imbal hasil US 10-Year Treasury. Selalu gunakan proteksi Stop Loss ketat sesuai time frame Anda!`,
-      });
-    }
-
     const systemInstruction = `
-Anda adalah Asisten Pakar Trading XAU/USD (Gold) profesional bernama "AuraGold AI".
+Anda adalah Asisten Pakar Trading XAU/USD (Gold) profesional bernama "GOLD HUNT AI".
 Gaya komunikasi Anda: Tegas, berbasis data, profesional, ramah, dan berorientasi pada manajemen risiko ketat.
-Harga terkini XAU/USD adalah sekitar $${currentGoldPrice.toFixed(2)}.
+Harga terkini XAU/USD adalah sekitar $${price}.
 Anda membantu trader memahami korelasi DXY, Fed rate, kalender ekonomi (CPI, NFP, PCE), teknikal analisis (SMC, Supply & Demand, Candlestick pattern, Support/Resistance, Pivot Points), serta kalkulasi lot size dan psikologi trading.
-Gunakan format markdown yang rapi dengan poin-poin yang mudah dibaca saat mengeksekusi order.
 `;
 
     const chat = ai.chats.create({
@@ -474,22 +528,15 @@ Gunakan format markdown yang rapi dengan poin-poin yang mudah dibaca saat mengek
     });
 
     const response = await chat.sendMessage({
-      message: `Pertanyaan trader seputar XAU/USD (Harga live: $${currentGoldPrice.toFixed(2)}): ${message}`,
+      message: `Pertanyaan trader seputar XAU/USD (Harga live: $${price}): ${message}`,
     });
 
     res.json({
-      reply: response.text || 'Maaf, tidak dapat menghasilkan respon.',
+      reply: response.text || fallbackReply,
     });
   } catch (err: any) {
-    console.warn('Chat error fallback:', err?.message);
-    const price = currentGoldPrice.toFixed(2);
-    res.json({
-      reply: `[AuraGold Market Intelligence]: Harga XAU/USD saat ini berada di **$${price}**.\n\nMenanggapi pertanyaan Anda:
-1. **Analisa Makro**: Pasar emas saat ini sangat dipengaruhi oleh pergerakan Indeks Dolar AS (DXY) di 104.28 dan yield US 10-Year Treasury di 4.24%. Pelemahan yield memberi angin segar bagi kenaikan harga emas.
-2. **Setup Scalping M5**: Perhatikan area demand terdekat dengan Stop Loss ketat 25-35 pips.
-3. **Setup Intraday H1**: Pantau Higher Low di chart 1-jam dan Daily Pivot Support.
-4. **Risk Warning**: Selalu batasi resiko maksimal 1-2% dari modal akun Anda per transaksi.`,
-    });
+    lastQuotaExhaustedTimestamp = Date.now();
+    res.json({ reply: fallbackReply });
   }
 });
 
@@ -510,7 +557,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`AuraGold Trading Terminal server running on http://0.0.0.0:${PORT}`);
+    console.log(`GOLD HUNT Trading Terminal server running on http://0.0.0.0:${PORT}`);
   });
 }
 

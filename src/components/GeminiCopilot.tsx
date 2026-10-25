@@ -33,10 +33,10 @@ export const GeminiCopilot: React.FC<GeminiCopilotProps> = ({
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
-      content: `Halo Trader! Saya **AuraGold AI Agent**, asisten trading XAU/USD berbasis Gemini AI dengan Google Search Grounding.\n\nHarga Gold Spot saat ini berkisar di **$${currentPrice.toFixed(2)}**.\n\nSaya bertugas:
+      content: `Halo Trader! Saya **GOLD HUNT AI Agent**, asisten trading XAU/USD berbasis Gemini AI dengan Google Search Grounding.\n\nHarga Gold Spot OANDA saat ini berkisar di **$${currentPrice.toFixed(2)} / Troy Ounce (oz t)** (~$${(currentPrice / 31.1035).toFixed(2)}/gram).\n\nSaya bertugas:
 • Mengumpulkan berita terkini dari internet (DXY, Fed rate, Geopolitik, CPI, Yield US10Y)
-• Menghitung setup presisi **Scalping M5** (entry cepat, SL ketat) & **Intraday H1** (struktur tren & pivot)
-• Memberikan rekomendasi BUY / SELL berlandaskan sentimen berita real-time.\n\nSilakan klik tombol cepat di bawah atau ajukan pertanyaan spesifik!`,
+• Menghitung setup presisi **Scalping** & **Intraday** dalam satuan USD / Troy Ounce
+• Memberikan rekomendasi BUY / SELL berlandaskan sentimen berita real-time.\n\nSilakan pilih timeframe pada kartu sinyal atau ajukan pertanyaan spesifik!`,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
@@ -109,7 +109,7 @@ export const GeminiCopilot: React.FC<GeminiCopilotProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-white font-bold text-sm">AI Agent Market Grounding</h3>
+              <h3 className="text-white font-bold text-sm">GOLD HUNT Copilot AI</h3>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
                 <Globe className="w-2.5 h-2.5" /> LIVE SEARCH
               </span>
@@ -184,7 +184,7 @@ export const GeminiCopilot: React.FC<GeminiCopilotProps> = ({
         {isLoading && (
           <div className="flex items-center gap-2 text-xs text-amber-400 bg-slate-950/60 p-3 rounded-lg border border-slate-800 w-fit">
             <Sparkles className="w-4 h-4 animate-spin text-amber-400" />
-            <span>AI Agent sedang menelusuri data pasar internet & memproses sinyal...</span>
+            <span>GOLD HUNT AI sedang menelusuri data pasar internet & memproses sinyal...</span>
           </div>
         )}
       </div>

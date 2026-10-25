@@ -33,6 +33,16 @@ export interface MarketSentiment {
   summary: string;
 }
 
+export interface SessionPOIs {
+  asianHigh: number;
+  asianLow: number;
+  londonHigh: number;
+  londonLow: number;
+  previousDayHigh: number;
+  previousDayLow: number;
+  currentSession: string;
+}
+
 export interface PriceData {
   symbol: string;
   price: number;
@@ -48,6 +58,13 @@ export interface PriceData {
   us10y: number;
   activeSession: string;
   marketStatus: string;
+  broker?: string;
+  brokerAccount?: string;
+  unit?: string; // e.g. 'USD / Troy Ounce (oz t)'
+  unitShort?: string; // '$/oz t'
+  pricePerGramUSD?: number; // USD per gram conversion
+  gramsPerTroyOunce?: number; // 31.1035
+  sessionPOIs?: SessionPOIs;
   lastUpdated: string;
   candles: Candle[];
 }

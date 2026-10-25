@@ -167,6 +167,20 @@ export const LotCalculatorModal: React.FC<LotCalculatorModalProps> = ({
             </div>
           </div>
 
+          {/* Troy Ounce Contract Specification Info */}
+          <div className="p-3 bg-slate-950/80 rounded-xl border border-slate-800 text-[11px] space-y-1.5 font-mono">
+            <div className="text-amber-400 font-bold flex items-center justify-between">
+              <span>Standar Satuan Kontrak Emas:</span>
+              <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded">Troy Ounce (oz t)</span>
+            </div>
+            <div className="text-slate-400 text-[10px] space-y-0.5">
+              <div>• 1 Troy Ounce (1 oz t) = <strong>31.1035 gram</strong> emas murni</div>
+              <div>• 1.00 Standard Lot = <strong>100 oz t</strong> (1 pip = $10.00 USD)</div>
+              <div>• 0.10 Mini Lot = <strong>10 oz t</strong> (1 pip = $1.00 USD)</div>
+              <div>• 0.01 Micro Lot = <strong>1 oz t</strong> (1 pip = $0.10 USD)</div>
+            </div>
+          </div>
+
           {isHighRisk && (
             <div className="p-2.5 bg-rose-500/10 border border-rose-500/20 rounded-lg text-rose-400 text-[11px] flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />

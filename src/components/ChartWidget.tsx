@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Candle, TradeSignal } from '../types';
-import { Maximize2, Minimize2, Eye, TrendingUp, Sliders, Activity } from 'lucide-react';
+import { Candle, TradeSignal, SessionPOIs } from '../types';
+import { Maximize2, Minimize2, Eye, TrendingUp, Sliders, Activity, Layers, Crosshair } from 'lucide-react';
 
 interface ChartWidgetProps {
   candles: Candle[];
@@ -9,6 +9,7 @@ interface ChartWidgetProps {
   intradaySignal?: TradeSignal | null;
   activeStrategy: 'SCALPING' | 'INTRADAY';
   onStrategyChange: (strategy: 'SCALPING' | 'INTRADAY') => void;
+  sessionPOIs?: SessionPOIs;
 }
 
 export const ChartWidget: React.FC<ChartWidgetProps> = ({
@@ -18,10 +19,12 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({
   intradaySignal,
   activeStrategy,
   onStrategyChange,
+  sessionPOIs,
 }) => {
   const [useTradingView, setUseTradingView] = useState<boolean>(false);
   const [selectedTimeframe, setSelectedTimeframe] = useState<string>('M5');
   const [showIndicators, setShowIndicators] = useState<boolean>(true);
+  const [showPOIs, setShowPOIs] = useState<boolean>(true);
   const [hoveredCandle, setHoveredCandle] = useState<Candle | null>(null);
 
   const signal = activeStrategy === 'SCALPING' ? scalpingSignal : intradaySignal;
@@ -41,21 +44,31 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({
   // SVG dimensions
   const svgWidth = 800;
   const svgHeight = 440;
-  const paddingRight = 75;
+  const paddingRight = 85;
   const paddingBottom = 40;
   const paddingTop = 30;
   const chartHeight = svgHeight - paddingTop - paddingBottom;
   const chartWidth = svgWidth - paddingRight;
 
-  // Calculate min & max prices with buffer
+  // Calculate min & max prices with buffer including POIs
   const candlePrices = candles.flatMap((c) => [c.low, c.high]);
   if (currentPrice) candlePrices.push(currentPrice);
   if (slLevel) candlePrices.push(slLevel);
   if (tp1Level) candlePrices.push(tp1Level);
   if (tp2Level) candlePrices.push(tp2Level);
+  if (showPOIs && sessionPOIs) {
+    candlePrices.push(
+      sessionPOIs.asianHigh,
+      sessionPOIs.asianLow,
+      sessionPOIs.londonHigh,
+      sessionPOIs.londonLow,
+      sessionPOIs.previousDayHigh,
+      sessionPOIs.previousDayLow
+    );
+  }
 
-  const minPrice = candlePrices.length > 0 ? Math.min(...candlePrices) - 1.5 : 2720;
-  const maxPrice = candlePrices.length > 0 ? Math.max(...candlePrices) + 1.5 : 2755;
+  const minPrice = candlePrices.length > 0 ? Math.min(...candlePrices) - 1.5 : (currentPrice ? currentPrice - 10 : 3990);
+  const maxPrice = candlePrices.length > 0 ? Math.max(...candlePrices) + 1.5 : (currentPrice ? currentPrice + 10 : 4015);
   const priceRange = maxPrice - minPrice || 10;
 
   const getY = (val: number) => {
@@ -86,8 +99,12 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <span className="font-mono font-bold text-amber-400 text-base tracking-wider">XAU/USD</span>
-            <span className="text-xs px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 font-medium border border-amber-500/20">
-              GOLD SPOT
+            <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 font-bold border border-emerald-500/30 flex items-center gap-1 font-mono">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              OANDA FEED
+            </span>
+            <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 font-bold border border-amber-500/20 font-mono hidden sm:inline-flex" title="1 Troy Ounce = 31.1035 gram">
+              USD / Troy Ounce (oz t)
             </span>
           </div>
 
@@ -138,7 +155,7 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({
 
           <button
             onClick={() => setShowIndicators(!showIndicators)}
-            className={`p-1.5 rounded border ${
+            className={`p-1.5 rounded border transition-all ${
               showIndicators
                 ? 'bg-slate-800 border-slate-700 text-amber-400'
                 : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-slate-300'
@@ -146,6 +163,19 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({
             title="Toggle EMA 20 Indicator"
           >
             <Activity className="w-3.5 h-3.5" />
+          </button>
+
+          <button
+            onClick={() => setShowPOIs(!showPOIs)}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded border text-xs font-semibold transition-all ${
+              showPOIs
+                ? 'bg-sky-500/20 border-sky-500/50 text-sky-300 shadow-sm'
+                : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-slate-300'
+            }`}
+            title="Tandai Session High-Low sebagai POI (ASH, ASL, LSH, LSL, PDH, PDL)"
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>POI Sesi</span>
           </button>
 
           <button
@@ -167,14 +197,17 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({
           <iframe
             src="https://s.tradingview.com/widgetembed/?frameElementId=tradingview_gold&symbol=OANDA%3AXAUUSD&interval=5&hidesidetoolbar=0&symboledit=1&saveimage=1&toolbarbg=f1f3f6&studies=%5B%5D&theme=dark&style=1&timezone=Asia%2FJakarta&studies_overrides=%7B%7D&overrides=%7B%7D&enabled_features=%5B%5D&disabled_features=%5B%5D&locale=id&utm_source=localhost"
             className="w-full h-full border-0"
-            title="TradingView Gold Chart"
+            title="OANDA TradingView Gold Chart"
           />
         ) : (
           <div className="w-full h-full relative">
             {/* Hover details bar */}
             <div className="absolute top-2 left-4 z-10 flex flex-wrap items-center gap-3 text-[11px] font-mono text-slate-400 bg-slate-950/80 px-3 py-1 rounded-md border border-slate-800/80 backdrop-blur-sm">
               <span>
-                LIVE: <strong className="text-amber-400">${currentPrice.toFixed(2)}</strong>
+                LIVE: <strong className="text-amber-400">${currentPrice.toFixed(2)}</strong> <span className="text-[10px] text-slate-400">/ oz t</span>
+              </span>
+              <span className="text-[10px] text-amber-300/80 hidden md:inline">
+                (~${(currentPrice / 31.1035).toFixed(2)}/g)
               </span>
               {hoveredCandle ? (
                 <>
@@ -403,6 +436,281 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({
                 </g>
               )}
 
+              {/* SESSION HIGH / LOW POINTS OF INTEREST (POI / LIQUIDITY) */}
+              {showPOIs && sessionPOIs && (
+                <g className="session-pois">
+                  {/* ASIAN HIGH POI */}
+                  {sessionPOIs.asianHigh && (
+                    <g>
+                      <line
+                        x1={0}
+                        y1={getY(sessionPOIs.asianHigh)}
+                        x2={chartWidth}
+                        y2={getY(sessionPOIs.asianHigh)}
+                        stroke="#38bdf8"
+                        strokeWidth="1.2"
+                        strokeDasharray="4 3"
+                        opacity="0.85"
+                      />
+                      <text
+                        x={10}
+                        y={getY(sessionPOIs.asianHigh) - 4}
+                        fill="#38bdf8"
+                        fontSize="9"
+                        fontWeight="600"
+                        fontFamily="monospace"
+                        opacity="0.9"
+                      >
+                        [POI] ASIAN HIGH (ASH)
+                      </text>
+                      <rect
+                        x={chartWidth + 3}
+                        y={getY(sessionPOIs.asianHigh) - 8}
+                        width={70}
+                        height={16}
+                        fill="#0284c7"
+                        rx="3"
+                      />
+                      <text
+                        x={chartWidth + 6}
+                        y={getY(sessionPOIs.asianHigh) + 3}
+                        fill="#f0f9ff"
+                        fontSize="9"
+                        fontWeight="bold"
+                        fontFamily="monospace"
+                      >
+                        ASH {sessionPOIs.asianHigh.toFixed(1)}
+                      </text>
+                    </g>
+                  )}
+
+                  {/* ASIAN LOW POI */}
+                  {sessionPOIs.asianLow && (
+                    <g>
+                      <line
+                        x1={0}
+                        y1={getY(sessionPOIs.asianLow)}
+                        x2={chartWidth}
+                        y2={getY(sessionPOIs.asianLow)}
+                        stroke="#38bdf8"
+                        strokeWidth="1.2"
+                        strokeDasharray="4 3"
+                        opacity="0.85"
+                      />
+                      <text
+                        x={10}
+                        y={getY(sessionPOIs.asianLow) - 4}
+                        fill="#38bdf8"
+                        fontSize="9"
+                        fontWeight="600"
+                        fontFamily="monospace"
+                        opacity="0.9"
+                      >
+                        [POI] ASIAN LOW (ASL)
+                      </text>
+                      <rect
+                        x={chartWidth + 3}
+                        y={getY(sessionPOIs.asianLow) - 8}
+                        width={70}
+                        height={16}
+                        fill="#0284c7"
+                        rx="3"
+                      />
+                      <text
+                        x={chartWidth + 6}
+                        y={getY(sessionPOIs.asianLow) + 3}
+                        fill="#f0f9ff"
+                        fontSize="9"
+                        fontWeight="bold"
+                        fontFamily="monospace"
+                      >
+                        ASL {sessionPOIs.asianLow.toFixed(1)}
+                      </text>
+                    </g>
+                  )}
+
+                  {/* LONDON HIGH POI */}
+                  {sessionPOIs.londonHigh && (
+                    <g>
+                      <line
+                        x1={0}
+                        y1={getY(sessionPOIs.londonHigh)}
+                        x2={chartWidth}
+                        y2={getY(sessionPOIs.londonHigh)}
+                        stroke="#c084fc"
+                        strokeWidth="1.2"
+                        strokeDasharray="4 3"
+                        opacity="0.85"
+                      />
+                      <text
+                        x={10}
+                        y={getY(sessionPOIs.londonHigh) - 4}
+                        fill="#c084fc"
+                        fontSize="9"
+                        fontWeight="600"
+                        fontFamily="monospace"
+                        opacity="0.9"
+                      >
+                        [POI] LONDON HIGH (LSH)
+                      </text>
+                      <rect
+                        x={chartWidth + 3}
+                        y={getY(sessionPOIs.londonHigh) - 8}
+                        width={70}
+                        height={16}
+                        fill="#9333ea"
+                        rx="3"
+                      />
+                      <text
+                        x={chartWidth + 6}
+                        y={getY(sessionPOIs.londonHigh) + 3}
+                        fill="#faf5ff"
+                        fontSize="9"
+                        fontWeight="bold"
+                        fontFamily="monospace"
+                      >
+                        LSH {sessionPOIs.londonHigh.toFixed(1)}
+                      </text>
+                    </g>
+                  )}
+
+                  {/* LONDON LOW POI */}
+                  {sessionPOIs.londonLow && (
+                    <g>
+                      <line
+                        x1={0}
+                        y1={getY(sessionPOIs.londonLow)}
+                        x2={chartWidth}
+                        y2={getY(sessionPOIs.londonLow)}
+                        stroke="#c084fc"
+                        strokeWidth="1.2"
+                        strokeDasharray="4 3"
+                        opacity="0.85"
+                      />
+                      <text
+                        x={10}
+                        y={getY(sessionPOIs.londonLow) - 4}
+                        fill="#c084fc"
+                        fontSize="9"
+                        fontWeight="600"
+                        fontFamily="monospace"
+                        opacity="0.9"
+                      >
+                        [POI] LONDON LOW (LSL)
+                      </text>
+                      <rect
+                        x={chartWidth + 3}
+                        y={getY(sessionPOIs.londonLow) - 8}
+                        width={70}
+                        height={16}
+                        fill="#9333ea"
+                        rx="3"
+                      />
+                      <text
+                        x={chartWidth + 6}
+                        y={getY(sessionPOIs.londonLow) + 3}
+                        fill="#faf5ff"
+                        fontSize="9"
+                        fontWeight="bold"
+                        fontFamily="monospace"
+                      >
+                        LSL {sessionPOIs.londonLow.toFixed(1)}
+                      </text>
+                    </g>
+                  )}
+
+                  {/* PREVIOUS DAY HIGH POI */}
+                  {sessionPOIs.previousDayHigh && (
+                    <g>
+                      <line
+                        x1={0}
+                        y1={getY(sessionPOIs.previousDayHigh)}
+                        x2={chartWidth}
+                        y2={getY(sessionPOIs.previousDayHigh)}
+                        stroke="#fbbf24"
+                        strokeWidth="1.2"
+                        strokeDasharray="5 3"
+                        opacity="0.8"
+                      />
+                      <text
+                        x={chartWidth - 145}
+                        y={getY(sessionPOIs.previousDayHigh) - 4}
+                        fill="#fbbf24"
+                        fontSize="8.5"
+                        fontWeight="600"
+                        fontFamily="monospace"
+                        opacity="0.9"
+                      >
+                        PREV DAY HIGH (PDH)
+                      </text>
+                      <rect
+                        x={chartWidth + 3}
+                        y={getY(sessionPOIs.previousDayHigh) - 8}
+                        width={70}
+                        height={16}
+                        fill="#d97706"
+                        rx="3"
+                      />
+                      <text
+                        x={chartWidth + 6}
+                        y={getY(sessionPOIs.previousDayHigh) + 3}
+                        fill="#fffbeb"
+                        fontSize="9"
+                        fontWeight="bold"
+                        fontFamily="monospace"
+                      >
+                        PDH {sessionPOIs.previousDayHigh.toFixed(1)}
+                      </text>
+                    </g>
+                  )}
+
+                  {/* PREVIOUS DAY LOW POI */}
+                  {sessionPOIs.previousDayLow && (
+                    <g>
+                      <line
+                        x1={0}
+                        y1={getY(sessionPOIs.previousDayLow)}
+                        x2={chartWidth}
+                        y2={getY(sessionPOIs.previousDayLow)}
+                        stroke="#fb7185"
+                        strokeWidth="1.2"
+                        strokeDasharray="5 3"
+                        opacity="0.8"
+                      />
+                      <text
+                        x={chartWidth - 145}
+                        y={getY(sessionPOIs.previousDayLow) - 4}
+                        fill="#fb7185"
+                        fontSize="8.5"
+                        fontWeight="600"
+                        fontFamily="monospace"
+                        opacity="0.9"
+                      >
+                        PREV DAY LOW (PDL)
+                      </text>
+                      <rect
+                        x={chartWidth + 3}
+                        y={getY(sessionPOIs.previousDayLow) - 8}
+                        width={70}
+                        height={16}
+                        fill="#e11d48"
+                        rx="3"
+                      />
+                      <text
+                        x={chartWidth + 6}
+                        y={getY(sessionPOIs.previousDayLow) + 3}
+                        fill="#fff1f2"
+                        fontSize="9"
+                        fontWeight="bold"
+                        fontFamily="monospace"
+                      >
+                        PDL {sessionPOIs.previousDayLow.toFixed(1)}
+                      </text>
+                    </g>
+                  )}
+                </g>
+              )}
+
               {/* CURRENT LIVE PRICE LINE */}
               {currentPrice && (
                 <g>
@@ -448,24 +756,39 @@ export const ChartWidget: React.FC<ChartWidgetProps> = ({
       </div>
 
       {/* Chart Footer Indicator Legend */}
-      <div className="flex items-center justify-between px-4 py-1.5 bg-slate-950 border-t border-slate-800 text-[11px] text-slate-400">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center justify-between px-4 py-2 bg-slate-950 border-t border-slate-800 text-[11px] text-slate-400 gap-2">
+        <div className="flex flex-wrap items-center gap-3">
           <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span> Bullish Candle
+            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span> Bull
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-rose-500 inline-block"></span> Bearish Candle
+            <span className="w-2 h-2 rounded-full bg-rose-500 inline-block"></span> Bear
           </span>
           {showIndicators && (
             <span className="flex items-center gap-1.5 text-sky-400 font-mono">
               <span className="w-3 h-0.5 bg-sky-400 inline-block"></span> EMA 20
             </span>
           )}
+          {showPOIs && (
+            <>
+              <span className="flex items-center gap-1 text-sky-400 font-mono">
+                <span className="w-2.5 h-0.5 bg-sky-400 inline-block"></span> ASH/ASL (Asia POI)
+              </span>
+              <span className="flex items-center gap-1 text-purple-400 font-mono">
+                <span className="w-2.5 h-0.5 bg-purple-400 inline-block"></span> LSH/LSL (London POI)
+              </span>
+              <span className="flex items-center gap-1 text-amber-400 font-mono hidden md:flex">
+                <span className="w-2.5 h-0.5 bg-amber-400 inline-block"></span> PDH/PDL (Day POI)
+              </span>
+            </>
+          )}
         </div>
         <div className="flex items-center gap-3 font-mono">
+          <span className="hidden sm:inline">Broker: <strong className="text-emerald-400">OANDA (XAU/USD)</strong></span>
+          <span className="text-slate-500 hidden sm:inline">|</span>
           <span>Target Mode: <strong className="text-amber-400">{activeStrategy}</strong></span>
           <span className="text-slate-500">|</span>
-          <span className="text-slate-400">Spread: <strong>0.25 pips</strong></span>
+          <span className="text-slate-400">Spread: <strong className="text-emerald-400">0.15 - 0.22 pips</strong></span>
         </div>
       </div>
     </div>

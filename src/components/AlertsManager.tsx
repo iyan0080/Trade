@@ -54,7 +54,7 @@ export const AlertsManager: React.FC<AlertsManagerProps> = ({
       const res = await Notification.requestPermission();
       setPermissionState(res);
       if (res === 'granted') {
-        new Notification('AuraGold XAU/USD Terminal', {
+        new Notification('GOLD HUNT XAU/USD Terminal', {
           body: 'Notifikasi browser untuk Entry, SL, dan TP berhasil diaktifkan!',
         });
       }
@@ -236,7 +236,7 @@ export const AlertsManager: React.FC<AlertsManagerProps> = ({
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold text-white font-mono">
-                        ${alert.targetPrice.toFixed(2)}
+                        ${alert.targetPrice.toFixed(2)} <span className="text-[10px] text-slate-400 font-normal">/ oz t</span>
                       </span>
                       <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400">
                         {alert.type}
